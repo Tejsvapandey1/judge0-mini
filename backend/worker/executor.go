@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -86,12 +87,19 @@ func runAllTestCases(code, lang string, testCases []shared.TestCase) executionRe
 		}
 	}
 
-	runResult := runContainerCommand(containerID, config.RunCmd, buildCombinedInput(testCases), runTimeout)
-	if runResult.ErrText != "" {
-		return runResult
+	outputs := make([]string, 0, len(testCases))
+	for _, testCase := range testCases {
+		runResult := runContainerCommand(containerID, config.RunCmd, testCase.Input, runTimeout)
+		if runResult.ErrText != "" {
+			return runResult
+		}
+
+		outputs = append(outputs, strings.TrimSpace(strings.Join(runResult.Outputs, "\n")))
 	}
 
-	return runResult
+	return executionResult{
+		Outputs: outputs,
+	}
 }
 
 func writeSourceFile(containerID, sourceFile, code string) error {
@@ -115,11 +123,11 @@ func writeSourceFile(containerID, sourceFile, code string) error {
 
 	if err := execCmd.Run(); err != nil {
 		if ctxTimeout.Err() == context.DeadlineExceeded {
-			return fmt.Errorf(string(shared.TimeLimitExceeded))
+			return errors.New(string(shared.TimeLimitExceeded))
 		}
 
 		if stderr.Len() > 0 {
-			return fmt.Errorf(stderr.String())
+			return errors.New(stderr.String())
 		}
 
 		return err
@@ -180,17 +188,6 @@ func runContainerCommand(containerID, command, stdin string, timeout time.Durati
 	return executionResult{
 		Outputs: strings.Split(strings.TrimSpace(out.String()), "\n"),
 	}
-}
-
-func buildCombinedInput(testCases []shared.TestCase) string {
-	var builder strings.Builder
-
-	for _, tc := range testCases {
-		builder.WriteString(tc.Input)
-		builder.WriteByte('\n')
-	}
-
-	return builder.String()
 }
 
 func processJob(job shared.Job, rdb *redis.Client) {

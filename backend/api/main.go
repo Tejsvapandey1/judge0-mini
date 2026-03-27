@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 
@@ -115,11 +116,13 @@ func statusHandler(rdb *redis.Client) gin.HandlerFunc {
 
 func main() {
 	r := gin.Default()
+	questionDB := mustQuestionDB()
+	defer questionDB.Close()
 
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
@@ -127,6 +130,14 @@ func main() {
 	rdb := newRedisClient()
 	go apiws.StartSubscriber(rdb)
 
+	if count, err := questionStats(questionDB); err != nil {
+		log.Printf("failed to count seeded questions: %v", err)
+	} else {
+		log.Printf("questions ready: %d", count)
+	}
+
+	r.GET("/questions", listQuestionsHandler(questionDB))
+	r.GET("/questions/:slug", getQuestionHandler(questionDB))
 	r.POST("/run", submitJobHandler(rdb))
 	r.GET("/status/:id", statusHandler(rdb))
 	r.GET("/ws/:id", handlers.WSHandler)

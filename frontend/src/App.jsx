@@ -1,143 +1,409 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  SignInButton,
+  SignedIn,
+  SignedOut,
+  UserButton,
+  useUser,
+} from "@clerk/clerk-react";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import Editor from "./components/Editor";
+import { ProblemDetail, ProblemList } from "./components/ProblemPanel";
 import Result from "./components/Result";
-import { submitCode } from "./api";
+import { connectToJob, getQuestion, listQuestions, submitCode } from "./api";
 
-function getInitialTheme() {
-  if (typeof window === "undefined") {
-    return "light";
+function App({ authEnabled }) {
+  if (!authEnabled) {
+    return <ClerkSetupScreen />;
   }
 
-  const storedTheme = window.localStorage.getItem("theme");
-  if (storedTheme === "light" || storedTheme === "dark") {
-    return storedTheme;
-  }
-
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+  return (
+    <>
+      <SignedOut>
+        <SignedOutScreen />
+      </SignedOut>
+      <SignedIn>
+        <Routes>
+          <Route path="/" element={<Navigate to="/problems" replace />} />
+          <Route path="/problems" element={<ProblemsIndex />} />
+          <Route path="/problems/:slug" element={<ProblemWorkspace />} />
+          <Route path="*" element={<Navigate to="/problems" replace />} />
+        </Routes>
+      </SignedIn>
+    </>
+  );
 }
 
-function App() {
-  const [result, setResult] = useState(null);
-  const [jobState, setJobState] = useState("idle");
-  const [theme, setTheme] = useState(getInitialTheme);
+function ProblemsIndex() {
+  const { user } = useUser();
+  const navigate = useNavigate();
+  const [questions, setQuestions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const isDark = theme === "dark";
-    document.documentElement.classList.toggle("dark", isDark);
-    document.documentElement.style.colorScheme = isDark ? "dark" : "light";
-    window.localStorage.setItem("theme", theme);
-  }, [theme]);
+    let ignore = false;
 
-  const handleSubmit = async (job) => {
+    async function loadQuestions() {
+      try {
+        setLoading(true);
+        const data = await listQuestions();
+        if (ignore) {
+          return;
+        }
+
+        setQuestions(data.questions ?? []);
+        setError("");
+      } catch (loadErr) {
+        if (!ignore) {
+          setError(loadErr.message);
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadQuestions();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  if (loading) {
+    return <LoadingScreen label="Loading your problem set..." />;
+  }
+
+  if (error) {
+    return <ErrorScreen message={error} />;
+  }
+
+  return (
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.12),transparent_25%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.12),transparent_28%),#020617] text-slate-100">
+      <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+        <header className="mb-4 rounded-[1.75rem] border border-white/10 bg-slate-950/80 px-5 py-4 shadow-[0_16px_60px_rgba(15,23,42,0.45)] backdrop-blur">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.34em] text-amber-300/80">
+                Judge0 Mini
+              </p>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+                Choose a problem to start solving
+              </h1>
+              <p className="mt-2 text-sm leading-7 text-slate-300">
+                Signed in as <span className="font-semibold text-white">{user?.firstName || user?.username || user?.primaryEmailAddress?.emailAddress}</span>. Selecting a problem takes you to a dedicated solve page.
+              </p>
+            </div>
+            <UserButton afterSignOutUrl="/" />
+          </div>
+        </header>
+
+        <ProblemList
+          questions={questions}
+          activeSlug=""
+          onSelect={(slug) => navigate(`/problems/${slug}`)}
+        />
+      </div>
+    </main>
+  );
+}
+
+function ProblemWorkspace() {
+  const { user } = useUser();
+  const navigate = useNavigate();
+  const { slug } = useParams();
+  const [question, setQuestion] = useState(null);
+  const [language, setLanguage] = useState("python");
+  const [drafts, setDrafts] = useState({});
+  const [jobState, setJobState] = useState("idle");
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!slug) {
+      return;
+    }
+
+    let ignore = false;
+
+    async function loadQuestion() {
+      try {
+        setLoading(true);
+        const data = await getQuestion(slug);
+        if (ignore) {
+          return;
+        }
+
+        setQuestion(data);
+        setLanguage("python");
+        setResult(null);
+        setJobState("idle");
+        setDrafts((current) => ({
+          ...current,
+          [slug]: current[slug] ?? { ...data.starterCode },
+        }));
+        setError("");
+      } catch (loadErr) {
+        if (!ignore) {
+          setError(loadErr.message);
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadQuestion();
+
+    return () => {
+      ignore = true;
+    };
+  }, [slug]);
+
+  useEffect(() => {
+    if (!question) {
+      return;
+    }
+
+    setDrafts((current) => {
+      const existing = current[question.slug] ?? {};
+      const nextDraft = { ...question.starterCode, ...existing };
+      return {
+        ...current,
+        [question.slug]: nextDraft,
+      };
+    });
+  }, [question]);
+
+  const currentCode = question
+    ? drafts[question.slug]?.[language] ?? question.starterCode?.[language] ?? ""
+    : "";
+
+  const sampleInput = useMemo(() => {
+    if (!question?.examples?.length) {
+      return "";
+    }
+
+    return question.examples[0].input;
+  }, [question]);
+
+  const handleCodeChange = (value) => {
+    if (!question) {
+      return;
+    }
+
+    setDrafts((current) => ({
+      ...current,
+      [question.slug]: {
+        ...current[question.slug],
+        [language]: value,
+      },
+    }));
+  };
+
+  const handleReset = () => {
+    if (!question) {
+      return;
+    }
+
+    setDrafts((current) => ({
+      ...current,
+      [question.slug]: {
+        ...current[question.slug],
+        [language]: question.starterCode?.[language] ?? "",
+      },
+    }));
+    setResult(null);
+    setJobState("idle");
+  };
+
+  const handleRun = async () => {
+    if (!question) {
+      return;
+    }
+
     setResult(null);
     setJobState("submitting");
 
     try {
-      const res = await submitCode(job);
-      const jobId = res.job_id;
+      const submission = await submitCode({
+        code: currentCode,
+        language,
+        test_cases: question.testCases,
+      });
 
       setJobState("running");
-
-      const ws = new WebSocket(`ws://localhost:5000/ws/${jobId}`);
+      const ws = connectToJob(submission.job_id);
 
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        setResult(data);
+        const payload = JSON.parse(event.data);
+        setResult(payload);
         setJobState("completed");
         ws.close();
       };
 
-      ws.onerror = (err) => {
-        console.error("WebSocket error:", err);
+      ws.onerror = () => {
         setJobState("error");
       };
-    } catch (error) {
-      console.error("Submission failed:", error);
+    } catch (runErr) {
+      console.error(runErr);
       setJobState("error");
     }
   };
 
-  const toggleTheme = () => {
-    setTheme((currentTheme) => (currentTheme === "dark" ? "light" : "dark"));
-  };
+  if (loading) {
+    return <LoadingScreen label="Loading problem workspace..." />;
+  }
+
+  if (error) {
+    return <ErrorScreen message={error} />;
+  }
 
   return (
-    <main className="min-h-screen bg-stone-100 text-stone-800 transition-colors duration-300 dark:bg-[#0b1220] dark:text-stone-100">
-      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-4 sm:px-6 lg:px-8">
-        <section className="relative overflow-hidden rounded-[2rem] border border-black/10 bg-gradient-to-br from-orange-50 via-amber-50 to-emerald-50 p-6 shadow-[0_30px_80px_rgba(120,86,40,0.12)] transition-colors duration-300 dark:border-white/10 dark:from-[#111827] dark:via-[#0f172a] dark:to-[#0d1b2a] dark:shadow-[0_30px_80px_rgba(2,6,23,0.55)] sm:p-8">
-          <div className="absolute inset-y-0 right-0 hidden w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,0.22),transparent_45%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.18),transparent_35%)] dark:bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,0.18),transparent_45%),radial-gradient(circle_at_bottom_right,rgba(45,212,191,0.14),transparent_35%)] lg:block" />
-
-          <div className="relative flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-orange-700 dark:text-orange-300">
-                Judge0 Mini
-              </p>
-              <h1 className="mt-4 max-w-3xl text-4xl font-bold leading-none tracking-[-0.06em] text-stone-950 dark:text-white sm:text-5xl lg:text-7xl">
-                Run code in a Tailwind workspace built for fast feedback.
-              </h1>
-              <p className="mt-5 max-w-2xl text-sm leading-7 text-stone-600 dark:text-slate-300 sm:text-base">
-                Submit code, stream results from the backend, and compare
-                expected versus actual output in a layout that feels clean on
-                mobile and comfortable on large screens.
-              </p>
-            </div>
-
-            <div className="relative flex w-full max-w-sm flex-col gap-4 self-stretch rounded-[1.75rem] border border-black/10 bg-white/80 p-4 backdrop-blur xl:p-5 dark:border-white/10 dark:bg-white/5">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.12),transparent_25%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.12),transparent_28%),#020617] text-slate-100">
+      <div className="mx-auto w-full max-w-[1500px] px-4 py-4 sm:px-6 lg:px-8">
+        <header className="mb-4 rounded-[1.75rem] border border-white/10 bg-slate-950/80 px-5 py-4 shadow-[0_16px_60px_rgba(15,23,42,0.45)] backdrop-blur">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
               <button
                 type="button"
-                onClick={toggleTheme}
-                className="inline-flex items-center justify-center rounded-2xl border border-black/10 bg-stone-900 px-4 py-3 text-sm font-semibold text-white transition hover:translate-y-[-1px] hover:bg-stone-700 dark:border-white/10 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+                onClick={() => navigate("/problems")}
+                className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-slate-300 transition hover:border-white/30 hover:bg-white/5"
               >
-                {theme === "dark" ? "Switch to Light" : "Switch to Dark"}
+                Back to Problems
               </button>
-
-              <div className="inline-flex w-fit items-center gap-3 rounded-full border border-black/10 bg-white/90 px-4 py-2 text-sm font-medium text-stone-700 dark:border-white/10 dark:bg-white/10 dark:text-slate-200">
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${
-                    jobState === "completed"
-                      ? "bg-emerald-500"
-                      : jobState === "error"
-                        ? "bg-rose-500"
-                        : jobState === "running" || jobState === "submitting"
-                          ? "bg-amber-500"
-                          : "bg-sky-500"
-                  }`}
-                />
-                <span className="capitalize">{jobState}</span>
+              <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+                {question?.title}
+              </h1>
+              <p className="mt-2 text-sm leading-7 text-slate-300">
+                Focus mode for <span className="font-semibold text-white">{user?.firstName || user?.username || user?.primaryEmailAddress?.emailAddress}</span>. This route only shows the problem, editor, and output.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 self-start lg:self-center">
+              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+                {jobState === "idle" ? "Ready to code" : `Submission: ${jobState}`}
               </div>
+              <UserButton afterSignOutUrl="/" />
+            </div>
+          </div>
+        </header>
 
-              <div className="grid gap-3">
-                <div className="rounded-2xl border border-black/10 bg-white/70 p-4 dark:border-white/10 dark:bg-white/5">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-stone-500 dark:text-slate-400">
-                    Pipeline
-                  </p>
-                  <p className="mt-2 text-sm font-medium text-stone-900 dark:text-white">
-                    REST submit -> worker -> WebSocket result
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-black/10 bg-white/70 p-4 dark:border-white/10 dark:bg-white/5">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-stone-500 dark:text-slate-400">
-                    UX
-                  </p>
-                  <p className="mt-2 text-sm font-medium text-stone-900 dark:text-white">
-                    Responsive layout with persistent theme preference
-                  </p>
-                </div>
-              </div>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(430px,1.08fr)]">
+          <ProblemDetail question={question} />
+          <div className="space-y-4">
+            <Editor
+              language={language}
+              code={currentCode}
+              onCodeChange={handleCodeChange}
+              onLanguageChange={setLanguage}
+              onReset={handleReset}
+              onSubmit={handleRun}
+              isRunning={jobState === "submitting" || jobState === "running"}
+              sampleInput={sampleInput}
+            />
+            <Result result={result} jobState={jobState} />
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function SignedOutScreen() {
+  return (
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(251,191,36,0.14),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.12),transparent_26%),#020617] px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
+      <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="rounded-[2rem] border border-white/10 bg-slate-950/85 p-8 shadow-[0_24px_90px_rgba(15,23,42,0.55)] backdrop-blur">
+          <p className="text-xs font-semibold uppercase tracking-[0.34em] text-amber-300/80">
+            Judge0 Mini
+          </p>
+          <h1 className="mt-5 max-w-3xl text-5xl font-semibold leading-[0.95] tracking-[-0.05em] text-white sm:text-6xl">
+            Solve coding problems in a focused workspace built for fast runs.
+          </h1>
+          <p className="mt-5 max-w-2xl text-base leading-8 text-slate-300">
+            Sign in first, browse the problem set, then move into a dedicated route for each question with a distraction-free solve screen.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <SignInButton mode="modal">
+              <button
+                type="button"
+                className="rounded-2xl bg-gradient-to-r from-amber-400 via-orange-400 to-cyan-400 px-6 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-105"
+              >
+                Sign In with Clerk
+              </button>
+            </SignInButton>
+            <div className="rounded-2xl border border-white/10 px-5 py-3 text-sm text-slate-300">
+              Problem list route and focused solve route enabled
             </div>
           </div>
         </section>
 
-        <section className="mt-6 grid flex-1 gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.85fr)]">
-          <Editor
-            onSubmit={handleSubmit}
-            isRunning={jobState === "submitting" || jobState === "running"}
-            theme={theme}
-          />
-          <Result result={result} jobState={jobState} />
+        <section className="rounded-[2rem] border border-white/10 bg-slate-900/80 p-6 shadow-[0_24px_90px_rgba(15,23,42,0.4)] backdrop-blur">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">
+            Flow
+          </p>
+          <div className="mt-5 space-y-4">
+            {["Sign in", "Browse questions on /problems", "Solve on /problems/:slug"].map(
+              (item) => (
+                <div
+                  key={item}
+                  className="rounded-[1.5rem] border border-white/10 bg-slate-950/70 p-4 text-sm leading-7 text-slate-300"
+                >
+                  {item}
+                </div>
+              ),
+            )}
+          </div>
         </section>
+      </div>
+    </main>
+  );
+}
+
+function ClerkSetupScreen() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-slate-100">
+      <div className="max-w-2xl rounded-[2rem] border border-white/10 bg-slate-900/80 p-8 shadow-[0_24px_90px_rgba(15,23,42,0.55)]">
+        <p className="text-xs font-semibold uppercase tracking-[0.34em] text-amber-300/80">
+          Clerk Setup Required
+        </p>
+        <h1 className="mt-3 text-3xl font-semibold text-white">
+          Add your Clerk publishable key to launch the authenticated workspace.
+        </h1>
+        <p className="mt-4 text-sm leading-7 text-slate-300">
+          Create a `frontend/.env.local` file and set `VITE_CLERK_PUBLISHABLE_KEY`. Once that is present, the app will show sign-in and the new routed problem flow.
+        </p>
+      </div>
+    </main>
+  );
+}
+
+function LoadingScreen({ label }) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-slate-100">
+      <div className="rounded-[1.75rem] border border-white/10 bg-slate-900/80 px-6 py-5 text-sm text-slate-300">
+        {label}
+      </div>
+    </main>
+  );
+}
+
+function ErrorScreen({ message }) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-slate-100">
+      <div className="max-w-xl rounded-[1.75rem] border border-rose-400/20 bg-rose-500/10 px-6 py-5">
+        <p className="text-lg font-semibold text-white">Unable to load the coding workspace</p>
+        <p className="mt-2 text-sm leading-7 text-slate-200">{message}</p>
       </div>
     </main>
   );

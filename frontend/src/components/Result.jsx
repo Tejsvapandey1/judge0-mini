@@ -1,122 +1,112 @@
+function getStatusTone(status) {
+  switch (status) {
+    case "completed":
+      return "bg-emerald-500/15 text-emerald-200 ring-emerald-400/30";
+    case "running":
+    case "submitting":
+    case "pending":
+      return "bg-amber-500/15 text-amber-200 ring-amber-400/30";
+    case "error":
+      return "bg-rose-500/15 text-rose-200 ring-rose-400/30";
+    default:
+      return "bg-slate-800 text-slate-200 ring-white/10";
+  }
+}
+
+function getVerdictTone(verdict) {
+  switch (verdict) {
+    case "Accepted":
+      return "bg-emerald-500/15 text-emerald-200 ring-emerald-400/30";
+    case "Wrong Answer":
+    case "Runtime Error":
+    case "Compilation Error":
+      return "bg-rose-500/15 text-rose-200 ring-rose-400/30";
+    case "Time Limit Exceeded":
+      return "bg-amber-500/15 text-amber-200 ring-amber-400/30";
+    default:
+      return "bg-slate-800 text-slate-200 ring-white/10";
+  }
+}
+
 export default function Result({ result, jobState }) {
-  const testResults = result?.results ?? [];
-  const statusLabel = result?.status ?? jobState;
-
-  const statusClasses = {
-    idle: "bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-500/30",
-    pending:
-      "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30",
-    submitting:
-      "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30",
-    running:
-      "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30",
-    completed:
-      "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/30",
-    error:
-      "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/30",
-  };
-
-  const verdictClasses = {
-    Accepted:
-      "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/30",
-    "Wrong Answer":
-      "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/30",
-    "Runtime Error":
-      "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/30",
-    "Compilation Error":
-      "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/30",
-    "Time Limit Exceeded":
-      "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30",
-  };
+  const tests = result?.results ?? [];
+  const acceptedCount = tests.filter((item) => item.verdict === "Accepted").length;
+  const status = result?.status ?? jobState;
 
   return (
-    <section className="rounded-[2rem] border border-black/10 bg-white/80 p-4 shadow-[0_24px_70px_rgba(120,86,40,0.10)] backdrop-blur transition-colors duration-300 dark:border-white/10 dark:bg-white/5 dark:shadow-[0_24px_70px_rgba(2,6,23,0.45)] sm:p-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <section className="rounded-[1.75rem] border border-white/10 bg-slate-900/80 p-5 shadow-[0_20px_70px_rgba(15,23,42,0.45)] backdrop-blur">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-emerald-700 dark:text-emerald-300">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">
             Results
           </p>
-          <h2 className="mt-2 text-2xl font-bold tracking-tight text-stone-950 dark:text-white sm:text-3xl">
-            Execution summary
-          </h2>
-          <p className="mt-3 text-sm leading-7 text-stone-600 dark:text-slate-300">
-            Compare each test case against what your program actually returned.
-          </p>
+          <h2 className="mt-1 text-xl font-semibold text-white">Submission Panel</h2>
         </div>
-
-        <div
-          className={`inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold ring-1 ${
-            statusClasses[statusLabel] ?? statusClasses.idle
-          }`}
-        >
-          <span className="capitalize">{statusLabel}</span>
+        <div className={`rounded-full px-4 py-2 text-sm font-semibold ring-1 ${getStatusTone(status)}`}>
+          {status}
         </div>
       </div>
 
-      {!result && (
-        <div className="mt-5 flex min-h-[320px] flex-col justify-center rounded-[1.75rem] border border-dashed border-black/15 bg-gradient-to-br from-orange-50 via-white to-emerald-50 p-6 dark:border-white/10 dark:from-slate-900 dark:via-slate-950 dark:to-emerald-950/30">
-          <p className="text-2xl font-bold tracking-tight text-stone-950 dark:text-white">
-            No run yet
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-white/10 bg-slate-950/80 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+            Passed
           </p>
-          <p className="mt-3 max-w-md text-sm leading-7 text-stone-600 dark:text-slate-300">
-            Execute the sample or your own code to inspect verdicts and actual
-            output here.
+          <p className="mt-2 text-3xl font-semibold text-white">
+            {acceptedCount}/{tests.length || 0}
           </p>
         </div>
-      )}
+        <div className="rounded-2xl border border-white/10 bg-slate-950/80 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+            State
+          </p>
+          <p className="mt-2 text-3xl font-semibold capitalize text-white">{status}</p>
+        </div>
+      </div>
 
-      {result && (
-        <div className="mt-5 grid gap-4">
-          {testResults.map((item, index) => (
+      {!result ? (
+        <div className="mt-4 rounded-[1.5rem] border border-dashed border-white/10 bg-slate-950/70 p-5">
+          <p className="text-lg font-semibold text-white">No submission yet</p>
+          <p className="mt-2 text-sm leading-7 text-slate-300">
+            Run the current solution to see verdicts, expected output, and actual output for each test case.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-4 space-y-4">
+          {tests.map((item, index) => (
             <article
-              className="rounded-[1.5rem] border border-black/10 bg-stone-50/80 p-4 dark:border-white/10 dark:bg-slate-900/70"
               key={`${item.input}-${index}`}
+              className="rounded-[1.5rem] border border-white/10 bg-slate-950/75 p-4"
             >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-sm font-semibold uppercase tracking-[0.24em] text-stone-500 dark:text-slate-400">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">
                   Test {index + 1}
                 </span>
-                <strong
-                  className={`inline-flex w-fit items-center rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${
-                    verdictClasses[item.verdict] ?? statusClasses.idle
-                  }`}
-                >
+                <span className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${getVerdictTone(item.verdict)}`}>
                   {item.verdict}
-                </strong>
+                </span>
               </div>
 
               <div className="mt-4 grid gap-3">
-                <div className="rounded-2xl border border-black/10 bg-white px-4 py-3 dark:border-white/10 dark:bg-slate-950/80">
-                  <span className="block text-[11px] font-semibold uppercase tracking-[0.3em] text-stone-500 dark:text-slate-400">
-                    Input
-                  </span>
-                  <code className="mt-2 inline-flex max-w-full overflow-x-auto rounded-xl bg-stone-100 px-3 py-2 text-sm text-stone-900 dark:bg-slate-800 dark:text-slate-100">
-                    {item.input}
-                  </code>
-                </div>
-
-                <div className="rounded-2xl border border-black/10 bg-white px-4 py-3 dark:border-white/10 dark:bg-slate-950/80">
-                  <span className="block text-[11px] font-semibold uppercase tracking-[0.3em] text-stone-500 dark:text-slate-400">
-                    Expected
-                  </span>
-                  <code className="mt-2 inline-flex max-w-full overflow-x-auto rounded-xl bg-stone-100 px-3 py-2 text-sm text-stone-900 dark:bg-slate-800 dark:text-slate-100">
-                    {item.expected}
-                  </code>
-                </div>
-
-                <div className="rounded-2xl border border-black/10 bg-white px-4 py-3 dark:border-white/10 dark:bg-slate-950/80">
-                  <span className="block text-[11px] font-semibold uppercase tracking-[0.3em] text-stone-500 dark:text-slate-400">
-                    Got
-                  </span>
-                  <code className="mt-2 inline-flex max-w-full overflow-x-auto rounded-xl bg-stone-100 px-3 py-2 text-sm text-stone-900 dark:bg-slate-800 dark:text-slate-100">
-                    {item.got || "No output"}
-                  </code>
-                </div>
+                <ResultBlock label="Input" value={item.input} />
+                <ResultBlock label="Expected" value={item.expected} />
+                <ResultBlock label="Got" value={item.got || "No output"} />
               </div>
             </article>
           ))}
         </div>
       )}
     </section>
+  );
+}
+
+function ResultBlock({ label, value }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-4">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">{label}</p>
+      <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-950 px-3 py-2 font-mono text-sm text-slate-100">
+        {value}
+      </pre>
+    </div>
   );
 }
